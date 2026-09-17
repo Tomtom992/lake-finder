@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>__TITLE__</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<style>
+  :root{
+    --bg:#0e1512; --panel:#16211c; --panel2:#1d2b24; --line:#2a3c33;
+    --tx:#e8f0ea; --tx2:#9fb3a7; --accent:#4ade80; --accent2:#22d3ee;
+    --warn:#fbbf24; --bad:#f87171; --r:14px;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    background:var(--bg); color:var(--tx)}
+  #map{position:absolute; inset:0; background:#0b1210}
+  .leaflet-container{background:#0b1210; font:inherit}
+
+  /* ---------- Topbar ---------- */
+  #top{position:absolute; top:0; left:0; right:0; z-index:900;
+    padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 8px;
+    display:flex; gap:8px; align-items:center;
+    background:linear-gradient(180deg,rgba(8,14,11,.92),rgba(8,14,11,0))}
+  .pill{background:var(--panel); border:1px solid var(--line); color:var(--tx);
+    border-radius:999px; padding:9px 14px; font-size:14px; font-weight:600;
+    display:flex; align-items:center; gap:7px; cursor:pointer; white-space:nowrap;
+    box-shadow:0 2px 10px rgba(0,0,0,.35)}
+  .pill:active{transform:scale(.97)}
+  .pill.on{background:var(--accent); color:#05150c; border-color:var(--accent)}
+  #count{margin-left:auto; font-variant-numeric:tabular-nums}
+  #count b{color:var(--accent)}
+
+  /* ---------- Bottom sheet ---------- */
+  #sheet{position:absolute; left:0; right:0; bottom:0; z-index:950;
+    background:var(--panel); border-top:1px solid var(--line);
+    border-radius:18px 18px 0 0; box-shadow:0 -6px 28px rgba(0,0,0,.5);
+    transform:translateY(calc(100% - 118px)); transition:transform .28s cubic-bezier(.3,.8,.3,1);
+    max-height:88%; display:flex; flex-direction:column; touch-action:none}
+  #sheet.open{transform:translateY(0)}
+  #sheet.hidden{transform:translateY(100%)}
+  #grip{padding:8px 0 4px; display:flex; justify-content:center; cursor:grab; flex:none}
+  #grip i{width:42px; height:5px; border-radius:3px; background:#3c5246; display:block}
+  #sheetHead{padding:0 14px 8px; display:flex; align-items:baseline; gap:8px; flex:none}
+  #sheetHead h2{margin:0; font-size:15px; letter-spacing:.02em}
+  #sheetHead span{font-size:12px; color:var(--tx2)}
+  #list{overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0 10px calc(14px + var(--safe-b));
+    touch-action:pan-y}
+  .card{background:var(--panel2); border:1px solid var(--line); border-radius:var(--r);
+    padding:11px 12px; margin-bottom:8px; display:flex; gap:11px; align-items:center; cursor:pointer}
+  .card:active{border-color:var(--accent)}
+  .score{flex:none; width:46px; height:46px; border-radius:12px; display:grid; place-items:center;
+    font-weight:800; font-size:17px; color:#06170e; font-variant-numeric:tabular-nums}
+  .cmeta{min-width:0; flex:1}
+  .cname{font-size:15px; font-weight:650; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .csub{font-size:12px; color:var(--tx2); margin-top:3px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .badge{display:inline-block; font-size:10.5px; padding:1px 6px; border-radius:999px;
+    border:1px solid var(--line); margin-left:5px; vertical-align:1px}
+  .badge.warn{color:var(--warn); border-color:#4a3c16}
+  .badge.bad{color:var(--bad); border-color:#4a2020}
+  .badge.ok{color:var(--accent); border-color:#1e4430}
+
+  /* ---------- Drawer (Filter / Detail) ---------- */
+  .drawer{position:absolute; inset:0; z-index:1000; background:rgba(4,8,6,.55);
+    backdrop-filter:blur(3px); display:none}
+  .drawer.show{display:block}
+  .dpanel{position:absolute; left:0; right:0; bottom:0; max-height:92%;
+    background:var(--panel); border-radius:18px 18px 0 0; border-top:1px solid var(--line);
+    display:flex; flex-direction:column; animation:up .25s ease}
+  @keyframes up{from{transform:translateY(24px);opacity:.4}to{transform:none;opacity:1}}
+  .dhead{display:flex; align-items:center; gap:10px; padding:14px 14px 10px; flex:none;
+    border-bottom:1px solid var(--line)}
+  .dhead h3{margin:0; font-size:16px; flex:1; min-width:0;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .x{background:var(--panel2); border:1px solid var(--line); color:var(--tx);
+    width:34px; height:34px; border-radius:10px; font-size:17px; cursor:pointer; flex:none}
+  .dbody{overflow-y:auto; -webkit-overflow-scrolling:touch;
+    padding:12px 14px calc(20px + var(--safe-b))}
+
+  .frow{margin-bottom:16px}
+  .flabel{display:flex; justify-content:space-between; font-size:13px; margin-bottom:7px}
+  .flabel b{color:var(--accent); font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%; height:30px; -webkit-appearance:none; background:transparent}
+  input[type=range]::-webkit-slider-runnable-track{height:5px; border-radius:3px; background:#2e4237}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:26px; height:26px;
+    border-radius:50%; background:var(--accent); margin-top:-10.5px; border:3px solid #0e1512}
+  input[type=range]::-moz-range-track{height:5px; border-radius:3px; background:#2e4237}
+  input[type=range]::-moz-range-thumb{width:22px;height:22px;border:3px solid #0e1512;
+    border-radius:50%; background:var(--accent)}
+  .toggle{display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 0; border-top:1px solid var(--line); font-size:14px}
+  .sw{position:relative; width:48px; height:28px; flex:none}
+  .sw input{opacity:0; width:100%; height:100%; margin:0}
+  .sw i{position:absolute; inset:0; background:#31463b; border-radius:999px; transition:.2s; pointer-events:none}
+  .sw i:after{content:""; position:absolute; width:22px; height:22px; border-radius:50%;
+    background:#c8d6cd; top:3px; left:3px; transition:.2s}
+  .sw input:checked + i{background:var(--accent)}
+  .sw input:checked + i:after{transform:translateX(20px); background:#06170e}
+
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:4px 0 14px}
+  .kv{background:var(--panel2); border:1px solid var(--line); border-radius:11px; padding:9px 10px}
+  .kv small{display:block; color:var(--tx2); font-size:11px; margin-bottom:3px}
+  .kv span{font-size:15px; font-weight:650; font-variant-numeric:tabular-nums}
+  h4{margin:16px 0 8px; font-size:13px; color:var(--tx2); text-transform:uppercase; letter-spacing:.06em}
+  .bd{display:flex; align-items:center; gap:8px; font-size:12.5px; padding:5px 0}
+  .bd .bn{flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .bd .bv{color:var(--tx2); font-variant-numeric:tabular-nums; flex:none}
+  .bar{flex:none; width:74px; height:7px; border-radius:4px; background:#26362d; position:relative; overflow:hidden}
+  .bar i{position:absolute; top:0; bottom:0; border-radius:4px}
+  .bar i.p{background:var(--accent); left:50%}
+  .bar i.n{background:var(--bad); right:50%}
+  .chips{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px}
+  .chip{border:1px solid var(--line); border-radius:999px; padding:5px 10px;
+    font-size:12px; background:var(--panel2); white-space:nowrap}
+  .chip b{font-variant-numeric:tabular-nums; margin-right:3px}
+  .conf{background:var(--panel2); border:1px solid var(--line); border-radius:11px;
+    padding:9px 11px; font-size:12.5px; line-height:1.5; margin-bottom:12px}
+  .spot{background:var(--panel2); border:1px solid var(--line); border-radius:12px;
+    padding:9px 10px; margin-bottom:7px; display:flex; gap:10px; align-items:center}
+  .links{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px}
+  .btn{display:block; text-align:center; text-decoration:none; background:var(--panel2);
+    border:1px solid var(--line); color:var(--tx); border-radius:11px; padding:12px 8px; font-size:13.5px}
+  .btn.primary{background:var(--accent); color:#05150c; border-color:var(--accent); font-weight:700}
+  .note{font-size:11.5px; color:var(--tx2); line-height:1.5; margin-top:14px;
+    border-top:1px solid var(--line); padding-top:10px}
+  .banner{position:absolute; top:calc(env(safe-area-inset-top,0px) + 56px); left:10px; right:10px;
+    z-index:880; background:#3b2d0a; border:1px solid #6b5313; color:#fde68a;
+    border-radius:11px; padding:8px 11px; font-size:12px; line-height:1.45}
+  .empty{padding:26px 14px; text-align:center; color:var(--tx2); font-size:13.5px}
+  @media (min-width:820px){
+    #sheet{left:auto; right:14px; bottom:14px; width:400px; border-radius:var(--r);
+      border:1px solid var(--line); max-height:calc(100% - 96px);
+      transform:none !important}
+    #sheet.hidden{display:none}
+    #grip{display:none}
+    .dpanel{left:auto; right:14px; bottom:14px; width:430px; border-radius:var(--r);
+      border:1px solid var(--line); max-height:calc(100% - 96px)}
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="top">
+  <button class="pill" id="btnFilter">&#9776; Filter</button>
+  <button class="pill" id="btnLayer">&#9635;</button>
+  <button class="pill" id="btnLoad" title="eigene results.geojson laden">&#8682;</button>
+  <div class="pill" id="count"><b>0</b>&nbsp;Seen</div>
+</div>
+<input type="file" id="fileIn" accept=".geojson,.json,application/geo+json,application/json" hidden>
+
+<div id="banner" class="banner" style="display:none"></div>
+
+<div id="sheet">
+  <div id="grip"><i></i></div>
+  <div id="sheetHead"><h2>Ergebnisse</h2><span id="sortInfo">nach Score</span></div>
+  <div id="list"></div>
+</div>
+
+<div class="drawer" id="filterDrawer">
+  <div class="dpanel">
+    <div class="dhead"><h3>Filter</h3><button class="x" data-close>&times;</button></div>
+    <div class="dbody" id="filterBody"></div>
+  </div>
+</div>
+
+<div class="drawer" id="detailDrawer">
+  <div class="dpanel">
+    <div class="dhead"><h3 id="dTitle">See</h3><button class="x" data-close>&times;</button></div>
+    <div class="dbody" id="dBody"></div>
+  </div>
+</div>
+
+<script>
+const DATA = __DATA__;
+const META = __META__;
+
+/* ------------------------------------------------------------------ */
+/* Karte                                                               */
+/* ------------------------------------------------------------------ */
+const map = L.map('map', {zoomControl:false, attributionControl:true, tap:true})
+  .setView(META.center || [53.33,13.30], META.zoom || 10);
+L.control.zoom({position:'bottomleft'}).addTo(map);
+
+const bases = {
+  'Satellit': L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    {maxZoom:19, attribution:'Esri, Maxar, Earthstar Geographics'}),
+  'OpenStreetMap': L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {maxZoom:19, attribution:'&copy; OpenStreetMap-Mitwirkende'}),
+  'Topo': L.tileLayer('https://tile.opentopomap.org/{z}/{x}/{y}.png',
+    {maxZoom:17, attribution:'&copy; OpenStreetMap, SRTM | OpenTopoMap (CC-BY-SA)'})
+};
+let baseNames = Object.keys(bases), baseIdx = 0;
+let current = bases[baseNames[0]].addTo(map);
+document.getElementById('btnLayer').onclick = () => {
+  map.removeLayer(current);
+  baseIdx = (baseIdx+1) % baseNames.length;
+  current = bases[baseNames[baseIdx]].addTo(map);
+  toast(baseNames[baseIdx]);
+};
+
+const lakeLayer = L.layerGroup().addTo(map);
+const bufferLayer = L.layerGroup();
+
+/* ------------------------------------------------------------------ */
+/* Filterzustand                                                       */
+/* ------------------------------------------------------------------ */
+const F = {
+  minScore: 0, minShore: 0, maxBuild500: 99, minDistBuild: 0,
+  maxDrive: 999, minArea: 0, onlyPass: false, showBuffers: false
+};
+const hasDrive = DATA.features.some(f => f.properties.drive_time_min != null);
+
+const SLIDERS = [
+  {k:'minScore',     lab:'Mindest-Score',                   min:0, max:100, step:1,   fmt:v=>v},
+  {k:'minShore',     lab:'Wald am Ufer mindestens',         min:0, max:100, step:5,   fmt:v=>v+' %'},
+  {k:'maxBuild500',  lab:'Gebäude im 500-m-Ring höchstens', min:0, max:30,  step:1,   fmt:v=>v>=30?'egal':v},
+  {k:'minDistBuild', lab:'Abstand nächstes Gebäude ab',     min:0, max:2000,step:50,  fmt:v=>v+' m'},
+  {k:'minArea',      lab:'Seefläche ab',                    min:0, max:100, step:1,   fmt:v=>v+' ha'},
+  {k:'maxDrive',     lab:'Fahrzeit höchstens',              min:20,max:300, step:10,  fmt:v=>v>=300?'egal':v+' min', need:'drive'}
+];
+
+function buildFilterUI(){
+  const b = document.getElementById('filterBody');
+  b.innerHTML = '';
+  SLIDERS.forEach(s => {
+    if (s.need === 'drive' && !hasDrive) return;
+    const d = document.createElement('div'); d.className='frow';
+    d.innerHTML = `<div class="flabel"><span>${s.lab}</span><b id="v_${s.k}"></b></div>
+      <input type="range" id="s_${s.k}" min="${s.min}" max="${s.max}" step="${s.step}">`;
+    b.appendChild(d);
+    const inp = d.querySelector('input');
+    inp.value = F[s.k] = (s.k==='maxBuild500'||s.k==='maxDrive') ? s.max : s.min;
+    document.getElementById('v_'+s.k).textContent = s.fmt(inp.value);
+    inp.addEventListener('input', () => {
+      F[s.k] = +inp.value;
+      document.getElementById('v_'+s.k).textContent = s.fmt(inp.value);
+      render();
+    });
+  });
+  const t1 = document.createElement('label'); t1.className='toggle';
+  t1.innerHTML = `<span>Nur Seen, die alle harten Filter bestehen</span>
+    <span class="sw"><input type="checkbox" id="t_pass"><i></i></span>`;
+  b.appendChild(t1);
+  t1.querySelector('input').onchange = e => { F.onlyPass = e.target.checked; render(); };
+
+  const t2 = document.createElement('label'); t2.className='toggle';
+  t2.innerHTML = `<span>Pufferringe (100 / 500 / 1000 m) zeigen</span>
+    <span class="sw"><input type="checkbox" id="t_buf"><i></i></span>`;
+  b.appendChild(t2);
+  t2.querySelector('input').onchange = e => {
+    F.showBuffers = e.target.checked;
+    if (F.showBuffers) bufferLayer.addTo(map); else map.removeLayer(bufferLayer);
+    render();
+  };
+
+  const reset = document.createElement('button');
+  reset.className = 'btn'; reset.style.marginTop='14px'; reset.textContent = 'Filter zurücksetzen';
+  reset.onclick = () => { buildFilterUI(); render(); };
+  b.appendChild(reset);
+
+  const n = document.createElement('div'); n.className='note';
+  n.innerHTML = META.note || '';
+  b.appendChild(n);
+}
+
+/* ------------------------------------------------------------------ */
+/* Darstellung                                                         */
+/* ------------------------------------------------------------------ */
+function scoreColor(s){
+  if (s >= 80) return '#22c55e';
+  if (s >= 65) return '#84cc16';
+  if (s >= 50) return '#eab308';
+  if (s >= 35) return '#f97316';
+  return '#ef4444';
+}
+function num(v, d){ return (v===null||v===undefined||Number.isNaN(v)) ? '–' : (+v).toFixed(d===undefined?0:d); }
+function passes(p){
+  if (F.onlyPass && p.passes_filters === false) return false;
+  if ((p.wilderness_score ?? 0) < F.minScore) return false;
+  if ((p.shore_tree_cover ?? 0) < F.minShore) return false;
+  if (F.maxBuild500 < 30 && (p.building_count_500m ?? 0) > F.maxBuild500) return false;
+  if ((p.distance_nearest_building_m ?? 0) < F.minDistBuild) return false;
+  if ((p.area_ha ?? 0) < F.minArea) return false;
+  if (hasDrive && F.maxDrive < 300 && (p.drive_time_min ?? 0) > F.maxDrive) return false;
+  return true;
+}
+
+let visible = [];
+function render(){
+  lakeLayer.clearLayers(); bufferLayer.clearLayers();
+  visible = DATA.features.filter(f => passes(f.properties))
+                         .sort((a,b) => (b.properties.wilderness_score||0) - (a.properties.wilderness_score||0));
+
+  visible.forEach((f,i) => {
+    const p = f.properties, col = scoreColor(p.wilderness_score||0);
+    const poly = L.geoJSON(f.geometry, {
+      style:{color:col, weight:2, fillColor:col, fillOpacity:.42}
+    }).addTo(lakeLayer);
+    poly.on('click', () => openDetail(i));
+
+    const r = 7 + 13 * Math.pow((p.wilderness_score||0)/100, 2);
+    const m = L.circleMarker([p.latitude, p.longitude], {
+      radius:r, color:'#0b1210', weight:2, fillColor:col, fillOpacity:.95
+    }).addTo(lakeLayer);
+    m.bindTooltip(`${p.name || 'ohne Namen'} · ${num(p.wilderness_score,0)}`,
+                  {direction:'top', offset:[0,-r]});
+    m.on('click', () => openDetail(i));
+
+    if (F.showBuffers && p.buffers){
+      [[1000,'#38bdf8',.05],[500,'#a78bfa',.07],[100,'#fbbf24',.10]].forEach(([d,c,o])=>{
+        if (p.buffers[d]) L.geoJSON(p.buffers[d],
+          {style:{color:c, weight:1, dashArray:'4 4', fillColor:c, fillOpacity:o}}).addTo(bufferLayer);
+      });
+    }
+  });
+
+  document.querySelector('#count b').textContent = visible.length;
+  renderList();
+}
+
+function renderList(){
+  const el = document.getElementById('list');
+  if (!visible.length){
+    el.innerHTML = '<div class="empty">Kein See erfüllt diese Filter.<br>Schwellen lockern.</div>';
+    return;
+  }
+  el.innerHTML = visible.map((f,i) => {
+    const p = f.properties, col = scoreColor(p.wilderness_score||0);
+    const flags = [];
+    if (p.passes_filters === false) flags.push('<span class="badge warn">Filter</span>');
+    if (p.confidence === 'niedrig') flags.push('<span class="badge bad">Daten unsicher</span>');
+    if (p.has_campsite) flags.push('<span class="badge warn">Camping</span>');
+    if (p.has_marina) flags.push('<span class="badge warn">Marina</span>');
+    const drive = p.drive_time_min != null ? ` · ${num(p.drive_time_min)} min` : '';
+    return `<div class="card" data-i="${i}">
+      <div class="score" style="background:${col}">${num(p.wilderness_score,0)}</div>
+      <div class="cmeta">
+        <div class="cname">${p.name || 'See ohne Namen'}${flags.join('')}</div>
+        <div class="csub">${num(p.area_ha,1)} ha · Ufer&nbsp;${num(p.shore_tree_cover)} % Wald ·
+          ${num(p.building_count_500m)} Geb. 500 m${drive}</div>
+      </div></div>`;
+  }).join('');
+  el.querySelectorAll('.card').forEach(c =>
+    c.onclick = () => openDetail(+c.dataset.i));
+}
+
+/* ------------------------------------------------------------------ */
+/* Detailansicht                                                       */
+/* ------------------------------------------------------------------ */
+function openDetail(i){
+  const f = visible[i]; if (!f) return;
+  const p = f.properties;
+  map.flyTo([p.latitude, p.longitude], Math.max(map.getZoom(), 14), {duration:.6});
+  document.getElementById('dTitle').textContent = p.name || 'See ohne Namen';
+
+  const kv = (l,v) => `<div class="kv"><small>${l}</small><span>${v}</span></div>`;
+
+  // Teil-Scores als Chipreihe: sie bleiben immer einzeln sichtbar,
+  // der Gesamtscore ersetzt sie nicht.
+  const parts = [
+    ['Wildnis', p.wilderness_score], ['Sicht', p.visual_seclusion_score],
+    ['Zugang', p.access_score], ['Privacy', p.privacy_exposure_score],
+    ['Zeltfläche', p.campsite_suitability_score], ['Sicherheit', p.safety_score]
+  ].filter(x => x[1] !== null && x[1] !== undefined);
+  let html = '';
+  if (parts.length){
+    html += '<h4>Teil-Scores</h4><div class="chips">' + parts.map(([l,v]) =>
+      `<span class="chip" style="border-color:${scoreColor(v)}">
+         <b style="color:${scoreColor(v)}">${num(v,0)}</b> ${l}</span>`).join('') + '</div>';
+  }
+  if (p.data_confidence_score !== null && p.data_confidence_score !== undefined){
+    const c = p.data_confidence_score;
+    html += `<div class="conf">Datenvertrauen <b style="color:${scoreColor(c)}">${num(c,0)}</b>
+      ${p.overall_spot_score != null ? ' · Gesamt <b>' + num(p.overall_spot_score,0) +
+        '</b> (Abdeckung ' + num(p.overall_coverage,0) + ' %)' : ''}
+      <br><span style="opacity:.75">Ein niedriges Datenvertrauen macht den Score nicht
+      kleiner – es heißt, dass er auf dünnerer Grundlage steht.</span></div>`;
+  }
+  if (p.filter_status === 'UNKNOWN'){
+    html += '<div class="conf" style="border-color:#6b5313;color:#fde68a">' +
+      'Harte Filter: <b>UNBEKANNT</b> – für diesen See fehlt eine Datengrundlage. ' +
+      'Das ist kein Bestehen.</div>';
+  }
+  html += `<div class="grid">
+    ${kv('Wildnis-Score', num(p.wilderness_score,1))}
+    ${kv('Fläche', num(p.area_ha,1)+' ha')}
+    ${kv('Wald am Ufer (100 m)', num(p.shore_tree_cover)+' %')}
+    ${p.shore_segment_p10_score != null ? kv('Ufer P10 (schlechtestes Zehntel)', num(p.shore_segment_p10_score)) : ''}
+    ${p.developed_shore_percent != null ? kv('bebauter Uferanteil', num(p.developed_shore_percent,1)+' %') : ''}
+    ${p.longest_developed_section_m != null ? kv('längster gestörter Abschnitt', num(p.longest_developed_section_m)+' m') : ''}
+    ${kv('Wald 500 m', num(p.tree_cover_500m)+' %')}
+    ${kv('Wald 1000 m', num(p.tree_cover_1000m)+' %')}
+    ${kv('Siedlungsfläche', num(p.built_up_percent,2)+' %')}
+    ${kv('Acker', num(p.cropland_percent,1)+' %')}
+    ${kv('Gebäude 500 m', num(p.building_count_500m))}
+    ${kv('Gebäude 1000 m', num(p.building_count_1000m))}
+    ${kv('nächstes Gebäude', num(p.distance_nearest_building_m)+' m')}
+    ${kv('nächste Hauptstraße', num(p.distance_major_road_m)+' m')}
+    ${kv('nächstes Wohngebiet', num(p.distance_residential_m)+' m')}
+    ${p.drive_time_min != null ? kv('Fahrzeit '+(META.origin_label||''), num(p.drive_time_min)+' min') : ''}
+    ${p.drive_distance_km != null ? kv('Strecke', num(p.drive_distance_km)+' km') : ''}
+  </div>`;
+
+  if (p.score_breakdown && p.score_breakdown.length){
+    const mx = Math.max(...p.score_breakdown.map(b => Math.abs(b.points||0)), 1);
+    html += '<h4>Wie der Score zustande kommt</h4>';
+    html += p.score_breakdown
+      .slice().sort((a,b)=>Math.abs(b.points)-Math.abs(a.points))
+      .map(b => {
+        const w = Math.abs(b.points)/mx*50;
+        const bar = b.points >= 0
+          ? `<i class="p" style="width:${w}%"></i>`
+          : `<i class="n" style="width:${w}%"></i>`;
+        const val = (b.value===true?'ja':b.value===false?'nein':
+                     (typeof b.value==='number'? (+b.value).toFixed(1) : '–'));
+        return `<div class="bd"><span class="bn">${b.label||b.name}</span>
+          <span class="bv">${val}</span><span class="bar">${bar}</span>
+          <span class="bv" style="width:38px;text-align:right">${b.points>0?'+':''}${(+b.points).toFixed(1)}</span></div>`;
+      }).join('');
+  }
+
+  if (p.passes_filters === false && p.filter_reasons && p.filter_reasons.length){
+    html += '<h4>Harte Filter nicht bestanden</h4><div class="note" style="border:0;padding:0;color:#fca5a5">'
+          + p.filter_reasons.join('<br>') + '</div>';
+  }
+  // Ebene 2: konkrete Spot-Kandidaten am ausgewählten See
+  const spots = (META.spots && META.spots[p.osm_type && p.osm_id
+    ? (p.osm_type[0] + p.osm_id) : '']) || [];
+  if (spots.length){
+    html += `<h4>Spot-Kandidaten (${spots.length})</h4>`;
+    html += spots.map(s => {
+      const col = scoreColor(s.overall_spot_score ?? 0);
+      return `<div class="spot">
+        <div class="score" style="background:${col};width:38px;height:38px;font-size:15px">
+          ${num(s.overall_spot_score,0)}</div>
+        <div class="cmeta">
+          <div class="cname">${s.spot_id}${s.tent_fit ? '' :
+            ' <span class="badge bad">Zelt passt nicht</span>'}</div>
+          <div class="csub">${num(s.distance_to_water_m)} m zum Wasser ·
+            ${num(s.mean_slope_deg,1)}° Hang · ${num(s.flat_area_m2)} m² eben ·
+            Trockenheit ${num(s.dryness_score)}${
+            s.privacy_exposure_score != null ? ' · Privacy ' + num(s.privacy_exposure_score) : ''}</div>
+          ${(s.safety_flags && s.safety_flags.length)
+            ? '<div class="csub" style="color:#fbbf24">' + s.safety_flags.join(', ') + '</div>' : ''}
+        </div>
+        <a class="btn" style="width:auto;padding:8px 10px;font-size:12px"
+           href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}"
+           target="_blank" rel="noopener">Route</a>
+      </div>`;
+    }).join('');
+    html += `<div class="note" style="border:0;padding:6px 0 0">
+      Zeltfläche geprüft auf ${spots[0].tent_size_m ? spots[0].tent_size_m.join(' × ') + ' m' : 'Standardmaß'}
+      bei ${spots[0].dem_resolution_m ?? '?'} m Gitterweite.
+      ${spots[0].allowed_area_checked
+        ? 'Innerhalb der hinterlegten erlaubten Gebietskulisse.'
+        : '<b>Keine Gebietskulisse hinterlegt</b> – diese Flächen sind geeignet, aber damit nicht als erlaubt ausgewiesen.'}
+      </div>`;
+  }
+
+  if (p.quality_flags && p.quality_flags.length){
+    html += '<h4>Datenqualität – ' + (p.confidence||'?') + '</h4><div>'
+          + p.quality_flags.map(x=>`<span class="badge warn">${x}</span>`).join(' ') + '</div>';
+  }
+
+  const osm = `https://www.openstreetmap.org/${p.osm_type}/${p.osm_id}`;
+  const gm  = `https://www.google.com/maps/@?api=1&map_action=map&center=${p.latitude},${p.longitude}&zoom=15&basemap=satellite`;
+  const gmd = `https://www.google.com/maps/dir/?api=1&destination=${p.latitude},${p.longitude}`;
+  const geo = `geo:${p.latitude},${p.longitude}?q=${p.latitude},${p.longitude}`;
+  html += `<div class="links">
+    <a class="btn primary" href="${gmd}" target="_blank" rel="noopener">Route dorthin</a>
+    <a class="btn" href="${gm}" target="_blank" rel="noopener">Satellitenbild</a>
+    <a class="btn" href="${osm}" target="_blank" rel="noopener">In OpenStreetMap</a>
+    <a class="btn" href="${geo}">Koordinaten öffnen</a>
+  </div>
+  <div class="note">${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)} &nbsp;·&nbsp; OSM ${p.osm_type}/${p.osm_id}<br>
+  Ein hoher Score heißt: in OSM und im Landbedeckungsraster ist hier nichts Menschliches
+  verzeichnet. Das ist nicht dasselbe wie „hier ist nichts". Vor der Fahrt im Satellitenbild
+  gegenprüfen – und Naturschutz-, Betretungs- und Badeverbote beachten
+  (Kernzonen von Nationalparks und NSG sind oft gesperrt).</div>`;
+
+  document.getElementById('dBody').innerHTML = html;
+  document.getElementById('dBody').scrollTop = 0;
+  document.getElementById('detailDrawer').classList.add('show');
+}
+
+/* ------------------------------------------------------------------ */
+/* Bedienung                                                           */
+/* ------------------------------------------------------------------ */
+document.getElementById('btnFilter').onclick = () =>
+  document.getElementById('filterDrawer').classList.add('show');
+document.querySelectorAll('[data-close]').forEach(b =>
+  b.onclick = () => b.closest('.drawer').classList.remove('show'));
+document.querySelectorAll('.drawer').forEach(d =>
+  d.addEventListener('click', e => { if (e.target === d) d.classList.remove('show'); }));
+
+const sheet = document.getElementById('sheet');
+const grip = document.getElementById('grip');
+grip.onclick = () => sheet.classList.toggle('open');
+let y0 = null;
+grip.addEventListener('touchstart', e => { y0 = e.touches[0].clientY; }, {passive:true});
+grip.addEventListener('touchend', e => {
+  if (y0 === null) return;
+  const dy = e.changedTouches[0].clientY - y0;
+  if (dy < -30) sheet.classList.add('open');
+  else if (dy > 30) sheet.classList.remove('open');
+  y0 = null;
+}, {passive:true});
+
+/* Eigene results.geojson nachladen (aus einem CLI-Lauf) */
+document.getElementById('btnLoad').onclick = () => document.getElementById('fileIn').click();
+document.getElementById('fileIn').addEventListener('change', ev => {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const j = JSON.parse(rd.result);
+      if (!j || j.type !== 'FeatureCollection' || !Array.isArray(j.features))
+        throw new Error('Keine FeatureCollection');
+      j.features.forEach(ft => {
+        const p = ft.properties || {};
+        if (typeof p.score_breakdown === 'string' && p.score_breakdown) {
+          try { p.score_breakdown = JSON.parse(p.score_breakdown); } catch(e){ p.score_breakdown = []; }
+        }
+        ['quality_flags','filter_reasons'].forEach(k => {
+          if (typeof p[k] === 'string') p[k] = p[k] ? p[k].split('; ') : [];
+        });
+        if (p.latitude == null && ft.geometry) {
+          try {
+            const c = L.geoJSON(ft.geometry).getBounds().getCenter();
+            p.latitude = c.lat; p.longitude = c.lng;
+          } catch(e){}
+        }
+      });
+      DATA.features = j.features;
+      document.getElementById('banner').style.display = 'none';
+      render();
+      try { map.fitBounds(L.geoJSON(DATA).getBounds().pad(0.08)); } catch(e){}
+      toast(`${j.features.length} Seen geladen aus ${f.name}`);
+    } catch(err) {
+      toast('Datei nicht lesbar: ' + err.message);
+    }
+  };
+  rd.readAsText(f);
+});
+
+function toast(msg){
+  const b = document.getElementById('banner');
+  b.textContent = msg; b.style.display = 'block';
+  clearTimeout(b._t); b._t = setTimeout(()=>{ b.style.display='none'; }, 1600);
+}
+
+/* Start */
+buildFilterUI();
+render();
+if (DATA.features.length){
+  try {
+    const g = L.geoJSON(DATA);
+    map.fitBounds(g.getBounds().pad(0.08));
+  } catch(e){}
+}
+if (META.banner){
+  const b = document.getElementById('banner');
+  b.innerHTML = META.banner + ' <span style="opacity:.7">(tippen zum Ausblenden)</span>';
+  b.style.display = 'block';
+  b.style.cursor = 'pointer';
+  b.onclick = () => { b.style.display = 'none'; };
+}
+</script>
+</body>
+</html>

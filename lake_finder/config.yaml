@@ -1,0 +1,901 @@
+# =========================================================================
+# lake_finder -- Konfiguration
+#
+# Alle Schwellen, Gewichte und Filter stehen hier. Der Code enthaelt keine
+# fest verdrahteten Bewertungsgrenzen.
+# =========================================================================
+
+run:
+  log_level: INFO
+  log_file: output/lake_finder.log
+
+# -------------------------------------------------------------------------
+# Region
+# -------------------------------------------------------------------------
+region:
+  # Entweder eine benannte Voreinstellung (siehe unten) ...
+  preset: mueritz_serrahn
+  # ... oder direkt eine Bounding Box [west, sued, ost, nord] in EPSG:4326:
+  # bbox: [13.05, 53.20, 13.55, 53.47]
+  # ... oder Mittelpunkt + Kantenlänge:
+  # center: [13.30, 53.33]
+  # size_km: 30
+
+presets:
+  # Alles im Umkreis von rund zwei Autostunden ab Berlin.
+  mueritz_serrahn:
+    label: "Müritz-NP Ost / Feldberger Seenlandschaft"
+    center: [13.30, 53.33]
+    size_km: 30
+  stechlin:
+    label: "Stechlin / Rheinsberger Seengebiet"
+    center: [13.03, 53.15]
+    size_km: 30
+  schorfheide:
+    label: "Biosphärenreservat Schorfheide-Chorin"
+    center: [13.72, 53.00]
+    size_km: 30
+  uckermark_lychen:
+    label: "Lychen / Boitzenburger Land"
+    center: [13.42, 53.17]
+    size_km: 30
+  dahme_heideseen:
+    label: "Naturpark Dahme-Heideseen"
+    center: [13.75, 52.25]
+    size_km: 30
+  brandenburg_gross:
+    label: "Grosser Testlauf: Nordbrandenburg + Süd-Mecklenburg"
+    bbox: [12.40, 52.80, 14.20, 53.60]
+
+crs:
+  # "auto" -> UTM-Zone des Regionsmittelpunkts (bei grossen Regionen EPSG:3035).
+  # Distanzen und Flächen werden NIE in EPSG:4326 gerechnet.
+  metric: auto
+
+# -------------------------------------------------------------------------
+# Seen
+# -------------------------------------------------------------------------
+lakes:
+  min_area_ha: 1.0
+  max_area_ha: 5000.0
+  accept_water_values: [lake, pond, oxbow, lagoon]
+  exclude_water_values:
+    [river, canal, ditch, drain, stream, stream_pool, wastewater, fish_pass,
+     moat, reflecting_pool, swimming_pool, salt_pool, harbour, fountain]
+  include_untagged_natural_water: true   # natural=water ohne water=* mitnehmen
+  include_reservoirs: false              # Stauseen/Speicherbecken
+  exclude_intermittent: true
+
+buffers:
+  distances_m: [100, 250, 500, 1000]
+  shore_ring_m: 100        # "Ufergürtel": Fläche zwischen Ufer und 100 m
+
+# -------------------------------------------------------------------------
+# OpenStreetMap
+# -------------------------------------------------------------------------
+osm:
+  backend: overpass          # overpass | pbf
+  endpoints:
+    - https://overpass-api.de/api/interpreter
+    - https://overpass.kumi.systems/api/interpreter
+    - https://lz4.overpass-api.de/api/interpreter
+    - https://z.overpass-api.de/api/interpreter
+  user_agent: "lake-finder/1.0 (Masterprojekt Seensuche; open data)"
+  timeout_s: 300
+  max_retries: 4
+  min_interval_s: 1.5
+
+  lake_tile_size_deg: 0.5    # Kachelung der Seen-Abfrage
+  tile_size_deg: 0.15        # Kachelung der Feature-Abfrage (bbox-Modus)
+  feature_mode: auto         # auto | around | bbox
+  around_max_lakes: 200      # ab hier automatisch bbox
+  around_batch: 25
+  feature_radius_m: 3000     # Suchradius fuer Infrastruktur; Distanzen sind
+                             # darüber hinaus zensiert (Flag *_censored)
+  flag_radius_m: 1000        # Radius fuer has_campsite / has_marina / ...
+
+  cache_dir: data/cache/overpass
+  cache_ttl_days: 30
+
+  pbf:                       # Alternative fuer sehr grosse Regionen
+    enabled: false
+    url: "https://download.geofabrik.de/europe/germany/brandenburg-latest.osm.pbf"
+    path: data/pbf/brandenburg-latest.osm.pbf
+
+# -------------------------------------------------------------------------
+# Land Cover
+# -------------------------------------------------------------------------
+landcover:
+  source: esa_worldcover
+  base_url: "https://esa-worldcover.s3.eu-central-1.amazonaws.com"
+  version: v200
+  year: 2021
+  mode: vsicurl              # vsicurl (Fensterlesen über HTTP) | download
+  cache_dir: data/cache/worldcover
+  region_read_max_px: 8000   # Region am Stueck lesen, wenn kleiner als dies
+  exclude_water_from_denominator: true
+
+# -------------------------------------------------------------------------
+# Erreichbarkeit
+# -------------------------------------------------------------------------
+travel:
+  enabled: true
+  origin: [13.4050, 52.5200]   # Berlin Mitte
+  origin_label: "Berlin"
+  mode: haversine              # haversine | osrm
+  detour_factor: 1.3
+  avg_speed_kmh: 75
+  osrm_url: "https://router.project-osrm.org"
+  cache_dir: data/cache/osrm
+
+# -------------------------------------------------------------------------
+# Scoring
+# -------------------------------------------------------------------------
+scoring:
+  # Mindestanteil des Komponentengewichts, der mit echten Werten belegt sein
+  # muss, damit ein Teil-Score überhaupt berechnet wird. Darunter liefert der
+  # Block None ("nicht gerechnet") statt einer kleinen Zahl, die nur aus
+  # missing-Defaults entstanden ist. Betrifft vor allem die Spot-Blöcke auf
+  # Seenebene: solange es keinen Spot gibt, gibt es keinen Zeltflächen-Score.
+  min_data_share: 0.5
+
+  components:
+    shore_tree_cover:
+      label: "Wald direkt am Ufer (0-100 m)"
+      metric: shore_tree_cover
+      weight: 3.0
+      ramp: [40, 95]         # 0 Punkte bei 40 %, voll bei 95 %
+      unit: "%"
+      missing: 0.2
+    tree_cover_500m:
+      label: "Wald im 500-m-Ring"
+      metric: tree_cover_500m
+      weight: 2.0
+      ramp: [30, 90]
+      unit: "%"
+      missing: 0.2
+    tree_cover_1000m:
+      label: "Wald im 1000-m-Ring"
+      metric: tree_cover_1000m
+      weight: 1.0
+      ramp: [25, 85]
+      unit: "%"
+      missing: 0.2
+    natural_land:
+      label: "Naturnahe Fläche gesamt (1000 m)"
+      metric: natural_land_percent
+      weight: 1.0
+      ramp: [50, 98]
+      unit: "%"
+      missing: 0.2
+    distance_building:
+      label: "Abstand zum nächsten Gebäude"
+      metric: distance_nearest_building_m
+      weight: 2.5
+      ramp: [100, 1500]
+      unit: "m"
+      missing: 0.2
+    distance_major_road:
+      label: "Abstand zur nächsten Hauptstraße"
+      metric: distance_major_road_m
+      weight: 1.5
+      ramp: [200, 2000]
+      unit: "m"
+      missing: 0.2
+    distance_residential:
+      label: "Abstand zum nächsten Wohngebiet"
+      metric: distance_residential_m
+      weight: 1.0
+      ramp: [300, 3000]
+      unit: "m"
+      missing: 0.2
+    low_cropland:
+      label: "Wenig Ackerland (1000 m)"
+      metric: cropland_percent
+      weight: 1.0
+      ramp: [40, 2]          # invers: kleiner ist besser
+      unit: "%"
+      missing: 0.2
+    low_built_up:
+      label: "Wenig Siedlungsfläche (1000 m)"
+      metric: built_up_percent
+      weight: 1.5
+      ramp: [5, 0]           # invers
+      unit: "%"
+      missing: 0.2
+    # Erreichbarkeit geht bewusst NICHT in den Wildnis-Score ein --
+    # sie ist ein separates Filterkriterium. Zum Aktivieren weight > 0 setzen.
+    reachability:
+      label: "Fahrzeit ab Startpunkt"
+      metric: drive_time_min
+      weight: 0.0
+      ramp: [180, 40]
+      unit: "min"
+      missing: 0.5
+
+  penalties:
+    buildings_500m:
+      label: "Gebäude im 500-m-Ring"
+      metric: building_count_500m
+      points_per_unit: 3.0
+      max_points: 25
+    buildings_100m:
+      label: "Gebäude direkt am Ufer (100 m)"
+      metric: building_count_100m
+      points_per_unit: 6.0
+      max_points: 30
+    campsite:
+      label: "Campingplatz in Reichweite"
+      flag: has_campsite
+      points: 20
+    marina:
+      label: "Marina / Hafen / Slipanlage"
+      flag: has_marina
+      points: 18
+    accommodation:
+      label: "Hotel / Pension / Hütte"
+      flag: has_accommodation
+      points: 10
+    residential:
+      label: "Wohngebiet in Reichweite"
+      flag: has_residential
+      points: 20
+    parking:
+      label: "Parkplatz in Reichweite"
+      flag: has_parking
+      points: 6
+    railway:
+      label: "Bahnlinie in Reichweite"
+      flag: has_railway
+      points: 8
+    cropland_excess:
+      label: "Ackerland über 10 %"
+      metric: cropland_percent
+      threshold: 10
+      points_per_unit: 0.5
+      max_points: 15
+    built_up_excess:
+      label: "Siedlungsfläche über 0.5 %"
+      metric: built_up_percent
+      threshold: 0.5
+      points_per_unit: 5.0
+      max_points: 20
+
+  # hard_filters ist nach "filters:" (weiter unten) umgezogen, weil Filter
+  # jetzt drei Zustände kennen (PASS / FAIL / UNKNOWN). Ein hier stehender
+  # hard_filters-Block würde weiterhin gelesen (Rückwärtskompatibilität für
+  # ältere config.yaml-Dateien), ist aber nicht mehr nötig.
+
+  # -----------------------------------------------------------------------
+  # Getrennte Teil-Scores.
+  # Jeder Block hat dieselbe Struktur wie scoring.components/penalties oben.
+  # Ein Block ohne Konfiguration liefert None (nicht 0) -- er ist dann
+  # schlicht nicht gerechnet, und das bleibt sichtbar.
+  # -----------------------------------------------------------------------
+  scores:
+
+    # --- Wie einsehbar ist das Ufer? Der SCHLECHTESTE Uferabschnitt zählt.
+    visual_seclusion:
+      components:
+        shore_p10:
+          label: "Schlechtestes Zehntel des Ufers (P10)"
+          metric: shore_segment_p10_score
+          weight: 3.0
+          ramp: [30, 90]
+          missing: 0.2
+        shore_median:
+          label: "Ufer im Median"
+          metric: shore_segment_median_score
+          weight: 1.5
+          ramp: [40, 95]
+          missing: 0.2
+        natural_shore:
+          label: "Anteil naturbelassenes Ufer"
+          metric: natural_shore_percent
+          weight: 2.0
+          ramp: [60, 100]
+          unit: "%"
+          missing: 0.2
+        shore_worst:
+          label: "Schlechtestes Einzelsegment"
+          metric: shore_segment_min_score
+          weight: 1.0
+          ramp: [10, 80]
+          missing: 0.2
+        dist_building:
+          label: "Abstand zum nächsten Gebäude"
+          metric: distance_nearest_building_m
+          weight: 1.0
+          ramp: [100, 1500]
+          unit: "m"
+          missing: 0.2
+      penalties:
+        developed_shore:
+          label: "Bebauter Uferanteil"
+          metric: developed_shore_percent
+          threshold: 0.0
+          points_per_unit: 1.5
+          max_points: 35
+        longest_developed:
+          label: "Längster bebauter Uferabschnitt"
+          metric: longest_developed_section_m
+          threshold: 50
+          points_per_unit: 0.05
+          max_points: 20
+        visible_buildings:
+          label: "Sichtbare Gebäude"
+          metric: visible_buildings_count
+          points_per_unit: 4.0
+          max_points: 20
+
+    # --- Erreichbarkeit. Bewusst KEIN Teil des Wildnis-Scores.
+    access:
+      components:
+        drive_time:
+          label: "Fahrzeit ab Startpunkt"
+          metric: drive_time_min
+          weight: 2.0
+          ramp: [180, 30]
+          unit: "min"
+          missing: 0.4
+        walk_to_lake:
+          label: "Fußweg vom Zugangspunkt zum Ufer"
+          metric: walking_distance_to_lake_m
+          weight: 1.5
+          ramp: [4000, 300]
+          unit: "m"
+          missing: 0.4
+        walk_to_spot:
+          label: "Fußweg zum Platz"
+          metric: walking_distance_to_spot_m
+          weight: 0.5
+          ramp: [4000, 400]
+          unit: "m"
+          missing: 0.5
+      penalties:
+        no_access_point:
+          label: "Kein brauchbarer Zugangspunkt gefunden"
+          flag: access_point_missing
+          points: 40
+        private_access:
+          label: "Zufahrt nur über private/gesperrte Straße"
+          flag: access_via_private_road
+          points: 15
+
+    # --- Wie abgeschirmt ist ein LEGAL genutzter Platz? Siehe README.
+    privacy_exposure:
+      components:
+        terrain_screening:
+          label: "Abschirmung durch Gelände"
+          metric: terrain_screening_percent
+          weight: 2.0
+          ramp: [0, 90]
+          unit: "%"
+          missing: 0.3
+        vegetation_screening:
+          label: "Abschirmung durch Vegetation"
+          metric: vegetation_screening_percent
+          weight: 2.0
+          ramp: [0, 90]
+          unit: "%"
+          missing: 0.3
+        dist_building:
+          label: "Abstand zu Gebäuden"
+          metric: distance_nearest_building_m
+          weight: 1.5
+          ramp: [100, 1200]
+          unit: "m"
+          missing: 0.3
+        low_road_exposure:
+          label: "Wenig Einsicht von Straßen"
+          metric: exposure_from_roads
+          weight: 2.0
+          ramp: [60, 0]
+          missing: 0.3
+        low_path_exposure:
+          # Ein Waldweg ist für den Zugang gut und für die Privatsphäre
+          # nur leicht negativ -- deshalb deutlich geringeres Gewicht
+          # als Straßen und eine flachere Rampe.
+          label: "Wenig Einsicht von Wegen"
+          metric: exposure_from_paths
+          weight: 0.8
+          ramp: [80, 10]
+          missing: 0.4
+        low_building_exposure:
+          label: "Keine Sichtlinie von Gebäuden"
+          metric: exposure_from_buildings
+          weight: 1.5
+          ramp: [50, 0]
+          missing: 0.3
+      penalties:
+        path_at_spot:
+          label: "Weg unmittelbar am Platz (< 25 m)"
+          flag: path_at_spot
+          points: 10
+        road_at_spot:
+          label: "Straße unmittelbar am Platz (< 50 m)"
+          flag: road_at_spot
+          points: 25
+        parking_near:
+          label: "Parkplatz in Sichtweite"
+          flag: parking_near_spot
+          points: 12
+        open_ground:
+          # Ebenfalls erst mit DOM/nDOM berechenbar -- siehe openness.
+          label: "Offene Fläche ohne Abschirmung"
+          flag: unscreened_open_ground
+          points: 0
+
+    # --- Taugt die Fläche als Zeltplatz?
+    campsite_suitability:
+      components:
+        flat_area:
+          label: "Zusammenhängende ebene Fläche"
+          metric: flat_area_m2
+          weight: 2.0
+          ramp: [6, 45]
+          unit: "m²"
+          missing: 0.2
+        slope:
+          label: "Mittlere Hangneigung"
+          metric: mean_slope_deg
+          weight: 2.0
+          ramp: [8, 1]
+          unit: "°"
+          missing: 0.2
+        dryness:
+          label: "Trockenheit"
+          metric: dryness_score
+          weight: 1.5
+          ramp: [40, 95]
+          missing: 0.2
+        openness:
+          # Braucht ein Oberflächenmodell (DOM/nDOM) -- Ausbaustufe Phase 10.
+          # Bis dahin Gewicht 0, damit eine nie berechnete Metrik den Score
+          # nicht still verschiebt.
+          label: "Lichtung statt Dickicht"
+          metric: ground_openness
+          weight: 0.0
+          ramp: [20, 85]
+          missing: 0.4
+        water_distance:
+          label: "Abstand zum Wasser"
+          metric: distance_to_water_m
+          weight: 0.7
+          ramp: [10, 60]
+          unit: "m"
+          missing: 0.4
+      penalties:
+        no_tent_fit:
+          label: "Zeltgrundfläche passt nicht"
+          flag: tent_fit_failed
+          points: 45
+        rough_ground:
+          label: "Sehr unebener Boden"
+          metric: relief_cm
+          threshold: 15
+          points_per_unit: 0.8
+          max_points: 25
+
+    # --- Offensichtliche GIS-erkennbare Risikofaktoren
+    safety:
+      components:
+        slope_ok:
+          label: "Hangneigung unkritisch"
+          metric: max_slope_deg
+          weight: 2.0
+          ramp: [15, 2]
+          unit: "°"
+          missing: 0.3
+        dryness:
+          label: "Keine Senke / Staunässe"
+          metric: dryness_score
+          weight: 2.0
+          ramp: [30, 90]
+          missing: 0.3
+        height_above_water:
+          label: "Höhe über Wasserspiegel"
+          metric: height_above_water_m
+          weight: 1.5
+          ramp: [0.3, 3.0]
+          unit: "m"
+          missing: 0.3
+        walkout:
+          label: "Rückweg zum Auto"
+          metric: walking_distance_to_spot_m
+          weight: 1.0
+          ramp: [5000, 500]
+          unit: "m"
+          missing: 0.4
+      penalties:
+        wet_depression:
+          label: "Mulde mit möglicher Wasseransammlung"
+          flag: wet_depression
+          points: 30
+        very_close_to_water:
+          label: "Sehr nah am Wasser"
+          flag: close_to_water
+          points: 12
+        very_long_walkout:
+          label: "Sehr langer Rückweg"
+          flag: very_long_walkout
+          points: 10
+
+  # -----------------------------------------------------------------------
+  # Datenvertrauen. Geht NICHT in die Sachscores ein.
+  # -----------------------------------------------------------------------
+  confidence:
+    start: 100
+    missing_source_penalty: 12
+    flag_penalties:
+      landcover_fehlt: 40
+      gelaende_fehlt: 25
+      osm_luecke_moeglich: 25
+      building_sources_disagree: 20
+      raster_luecken: 15
+      ufersegmente_fehlen: 15
+      landcover_underestimates_development: 12
+      nur_eine_gebaeudequelle: 10
+      wenige_pixel: 10
+      kleiner_see_raster_grob: 8
+      dgm_zu_grob_fuer_zeltflaeche: 8
+      landcover_stand_2021: 5
+      distanz_abgeschnitten: 3
+
+  # -----------------------------------------------------------------------
+  # Gesamtscore. Profile verschieben NUR die Gewichte, nichts wird neu
+  # gerechnet. data_confidence ist bewusst nicht dabei.
+  # -----------------------------------------------------------------------
+  overall:
+    weights:
+      wilderness: 2.0
+      visual_seclusion: 2.0
+      campsite_suitability: 1.5
+      privacy_exposure: 1.0
+      access: 1.0
+      safety: 1.0
+    profiles:
+      balanced: {}
+      max_seclusion:
+        wilderness: 3.0
+        visual_seclusion: 3.0
+        access: 0.3
+        privacy_exposure: 1.5
+        campsite_suitability: 1.0
+        safety: 1.0
+      easy_access:
+        access: 3.0
+        wilderness: 1.0
+        visual_seclusion: 1.0
+        campsite_suitability: 1.5
+        privacy_exposure: 0.5
+        safety: 1.0
+      best_tent:
+        campsite_suitability: 3.5
+        safety: 2.0
+        wilderness: 1.0
+        visual_seclusion: 1.0
+        access: 1.0
+        privacy_exposure: 0.5
+      best_view:
+        visual_seclusion: 2.0
+        lake_view: 0.0        # Platzhalter, sobald lake_visibility_percent vorliegt
+        wilderness: 2.0
+        campsite_suitability: 1.5
+        access: 1.0
+        privacy_exposure: 0.5
+        safety: 1.0
+      max_privacy:
+        privacy_exposure: 3.5
+        visual_seclusion: 2.5
+        wilderness: 1.5
+        campsite_suitability: 1.0
+        access: 0.5
+        safety: 1.0
+
+# =========================================================================
+# Harte Filter -- drei Zustände: PASS / FAIL / UNKNOWN
+#
+# UNKNOWN ist KEIN PASS. Ob ein UNKNOWN am Ende durchfällt, entscheidet
+# fail_on_missing_critical_data. Für die hochwertige Suche: true.
+#
+# "requires" bindet einen Check an eine Datengrundlage. Fehlt sie für
+# diesen See, ist der Check UNKNOWN -- egal ob zufällig ein Wert dasteht.
+# =========================================================================
+filters:
+  fail_on_missing_critical_data: true
+
+  checks:
+    # --- Gebäude: der Fall Kleiner Zermittensee (60,9 m, 1 Gebäude im
+    #     100-m-Ring) muss hier durchfallen.
+    min_distance_nearest_building_m:
+      label: "Abstand nächstes Gebäude"
+      metric: distance_nearest_building_m
+      min: 300
+      requires: [buildings]
+      critical: true
+    max_buildings_100m:
+      label: "Gebäude im 100-m-Ring"
+      metric: building_count_100m
+      max: 0
+      requires: [buildings]
+      critical: true
+    max_buildings_250m:
+      label: "Gebäude im 250-m-Ring"
+      metric: building_count_250m
+      max: 0
+      requires: [buildings]
+      critical: true
+    max_buildings_500m:
+      label: "Gebäude im 500-m-Ring"
+      metric: building_count_500m
+      max: 2
+      requires: [buildings]
+      critical: true
+
+    # --- Ausschlusskriterien (Flags gelten im Radius osm.flag_radius_m)
+    exclude_residential:
+      label: "Wohngebiet in Reichweite"
+      flag: has_residential
+      must_be: false
+      requires: [osm_features]
+      critical: true
+    exclude_campsite:
+      label: "Campingplatz in Reichweite"
+      flag: has_campsite
+      must_be: false
+      requires: [osm_features]
+      critical: true
+    exclude_marina:
+      label: "Marina / Hafen / Slipanlage in Reichweite"
+      flag: has_marina
+      must_be: false
+      requires: [osm_features]
+      critical: true
+    exclude_accommodation:
+      label: "Hotel / Pension / Hütte in Reichweite"
+      flag: has_accommodation
+      must_be: false
+      requires: [osm_features]
+      critical: true
+    exclude_parking:
+      label: "Parkplatz in Reichweite"
+      flag: has_parking
+      must_be: false
+      requires: [osm_features]
+      critical: false
+      enabled: false        # optional; ein Wanderparkplatz ist auch Zugang
+
+    # --- Land Cover
+    min_tree_cover_500m:
+      label: "Wald im 500-m-Ring"
+      metric: tree_cover_500m
+      min: 60
+      requires: [landcover]
+      critical: true
+    min_shore_tree_cover:
+      label: "Wald am Ufer"
+      metric: shore_tree_cover
+      min: 70
+      requires: [landcover]
+      critical: true
+    max_built_up_percent:
+      label: "Siedlungsanteil"
+      metric: built_up_percent
+      max: 1.0
+      requires: [landcover]
+      critical: true
+    max_cropland_percent:
+      label: "Ackeranteil"
+      metric: cropland_percent
+      max: 15
+      requires: [landcover]
+      critical: true
+
+    # --- Straße / Bahn
+    min_distance_major_road:
+      label: "Abstand Hauptstraße"
+      metric: distance_major_road_m
+      min: 300
+      requires: [osm_features]
+      critical: true
+
+    # --- Uferqualität (aus der Segmentanalyse, Milestone 2)
+    max_developed_shore_percent:
+      label: "Bebauter Uferanteil"
+      metric: developed_shore_percent
+      max: 10
+      requires: [shore_segments]
+      critical: true
+    min_shore_p10:
+      label: "Schlechtestes Uferzehntel (P10)"
+      metric: shore_segment_p10_score
+      min: 45
+      requires: [shore_segments]
+      critical: true
+
+    # --- Erreichbarkeit
+    max_drive_time:
+      label: "Fahrzeit"
+      metric: drive_time_min
+      max: 120
+      requires: [travel]
+      critical: false       # eine fehlende Fahrzeit soll den See nicht kippen
+
+
+# =========================================================================
+# Betriebsart (Release v2-rc1)
+#
+#   live         Region wählen, Daten holen, rechnen (wie bisher).
+#   precomputed  NUR vorberechnete Bündel aus data_dir. Beim Öffnen der
+#                App geht keine einzige Anfrage nach draußen; der
+#                Analyse-Pfad ist hart gesperrt.
+#   auto         precomputed, wenn ein Bündel vorliegt, sonst live.
+#
+# Vorrang: CLI --mode  >  Umgebungsvariable LAKE_FINDER_MODE  >  hier.
+# Für Cloud-Deployment in den Streamlit-Secrets setzen:
+#     LAKE_FINDER_MODE = "precomputed"
+# =========================================================================
+deployment:
+  mode: auto
+  data_dir: data/processed
+  # Nach einem erfolgreichen CLI-Lauf automatisch ein Bündel schreiben.
+  # Ohne das muss man "python main.py ... --export-precomputed" aufrufen.
+  auto_export: false
+
+# -------------------------------------------------------------------------
+# Ausgabe
+# -------------------------------------------------------------------------
+output:
+  dir: output
+  csv: results.csv
+  geojson: results.geojson
+  map_html: map.html
+  app_html: app.html
+  write_buffers: true          # Buffer-Ringe als eigene GeoJSON-Layer
+  buffer_layers_m: [100, 500, 1000]
+  keep_filtered: true          # Seen, die durchfallen, mit ausgeben
+  max_features_in_app: 400     # Begrenzung fuer die eingebettete HTML-Karte
+
+# -------------------------------------------------------------------------
+# Optionale Sentinel-2-Sichtkontrolle
+# -------------------------------------------------------------------------
+sentinel:
+  enabled: false
+  stac_url: "https://earth-search.aws.element84.com/v1"
+  collection: sentinel-2-l2a
+  max_cloud_percent: 10
+  months: [5, 6, 7, 8, 9]
+  years_back: 2
+  chip_size_m: 2000
+  top_n: 20
+  out_dir: output/chips
+
+# =========================================================================
+# Ufersegmentanalyse (Milestone 2)
+# =========================================================================
+shore:
+  enabled: true
+  segment_spacing_m: 25        # 20-25 m ist der sinnvolle Bereich: feiner
+                               # als die OSM-Uferlinie ist Scheingenauigkeit
+  primary_radius_m: 100        # Land-Cover-Umkreis je Segment
+  near_radius_m: 150           # Umkreis für die Objektzählung
+  developed_threshold_score: 55  # darunter gilt ein Segment als gestört
+  natural_threshold_score: 75    # darüber als naturbelassen
+  max_segments_per_lake: 1200    # Schutz vor Riesenseen mit 40 km Uferlinie
+  # segment_score: eigener Bewertungsblock; ohne Angabe greift der Default
+  # aus src/shoreline.py (Wald, naturnah, Abstände, Abzüge).
+
+# =========================================================================
+# Gebäude aus mehreren Quellen (Milestone 3)
+# =========================================================================
+buildings:
+  dedup_max_centroid_dist_m: 12    # OSM-, Overture- und ALKIS-Umringe
+  dedup_max_area_ratio: 4.0        # desselben Hauses liegen selten deckungsgleich
+
+  overture:
+    enabled: false                 # braucht: pip install duckdb
+    release: "2026-08-19.0"        # Monatsrelease; neuen Wert eintragen genügt
+    s3_path: "s3://overturemaps-us-west-2/release/{release}/theme=buildings/type=building/*"
+    cache_dir: data/cache/overture
+    limit: null
+
+  official:                        # amtliche Hausumringe, höchste Priorität
+    enabled: false
+    sources: []
+    # - state: brandenburg
+    #   path: data/official/bb_hausumringe.gpkg
+    #   crs: EPSG:25833
+
+# =========================================================================
+# Zugangspunkte und Routing (Milestone 4)
+# =========================================================================
+access:
+  enabled: true
+  search_radius_m: 2500        # Straßen in diesem Umkreis kommen infrage
+  sample_step_m: 250           # lange Straßen zusätzlich abtasten
+  max_samples_per_road: 6
+  dedup_cell_m: 120
+  allow_tracks: true           # Waldwege als Zufahrt zulassen
+  max_walk_m: 2500
+  walk_detour_factor: 1.35     # Luftlinie -> Gehstrecke (Schätzung!)
+  weight_walk: 3.0
+  weight_road_class: 1.5
+  weight_drive_time: 1.0
+  private_penalty: 45          # private/gesperrte Zufahrt stark abwerten
+  track_penalty: 8
+  route_top_k: 3               # so viele Kandidaten je See werden geroutet
+  # Für den Vollbetrieb: eigener Router statt Demo-Server.
+  # travel.osrm_url auf http://localhost:5000 setzen (OSRM) und dort das
+  # car-Profil für die Region vorhalten; für Fußwege ein zweites Profil.
+  foot_router_url: null
+
+# =========================================================================
+# Höhenmodell (Milestone 5)
+# =========================================================================
+elevation:
+  enabled: false
+  # source: local | wcs | state | copernicus
+  source: state
+  state: brandenburg
+  states:
+    brandenburg:
+      path: data/dem/brandenburg
+      pattern: "*.tif"
+      resolution_m: 1.0
+      crs: EPSG:25833
+    mecklenburg_vorpommern:
+      path: data/dem/mecklenburg_vorpommern
+      crs: EPSG:25833
+    sachsen:
+      path: data/dem/sachsen
+      crs: EPSG:25833
+    sachsen_anhalt:
+      path: data/dem/sachsen_anhalt
+      crs: EPSG:25832
+    thueringen:
+      path: data/dem/thueringen
+      crs: EPSG:25832
+  # Rückfall ohne DGM1: weltweites 30-m-Oberflächenmodell, anonym auf AWS.
+  # Reicht für Hangneigung im Landschaftsmaßstab, NICHT für Zeltflächen.
+  fallback_to_copernicus: true
+
+terrain:
+  dryness:
+    depression_full_penalty_m: 0.35   # ab dieser Senkentiefe voller Abzug
+    twi_dry: 4.0
+    twi_wet: 9.0
+
+# =========================================================================
+# Campingflächen (Milestone 6)
+# =========================================================================
+camp:
+  enabled: false               # erst einschalten, wenn ein DGM vorliegt
+  top_lakes: 15                # nur die besten Seen bekommen Spot-Analyse
+  corridor_min_m: 20           # Suchkorridor vom Wasser weg
+  corridor_max_m: 250
+  tent: "4x6"                  # 3x4 | 3x5 | 4x6 | 5x7 oder tent_size_m: [b, l]
+  rotation_step_deg: 15
+  max_slope_deg: 5.0
+  max_relief_cm: 25.0
+  min_flat_area_m2: 12.0
+  max_depression_depth_m: 0.25
+  min_candidate_separation_m: 40
+  max_candidates_per_lake: 12
+  min_footprint_cell_cover: 0.6
+  # Erlaubte Gebietskulisse. OHNE diese Datei werden Kandidaten als
+  # geeignet, aber ausdrücklich NICHT als erlaubt ausgewiesen.
+  allowed_area_geojson: null
+
+# =========================================================================
+# Sichtbarkeit und Privacy (Milestone 7)
+# =========================================================================
+viewshed:
+  max_radius_m: 800
+  observer_height_m: 1.6
+  building_height_m: 5.0
+
+privacy:
+  path_at_spot_m: 25           # Waldweg unmittelbar am Platz
+  road_at_spot_m: 50
+  parking_near_m: 150

@@ -1,0 +1,25 @@
+# lake_finder -- getestet mit Python 3.11 und 3.12
+#
+# Alle Pakete liefern manylinux-/macOS-/Windows-Wheels mit gebuendeltem
+# GEOS, PROJ und GDAL. Es ist KEINE systemweite GDAL-Installation noetig.
+
+geopandas>=1.0,<2.0
+shapely>=2.0,<3.0          # STRtree.nearest/query mit predicate braucht 2.x
+pyproj>=3.6
+rasterio>=1.3,<2.0
+numpy>=1.26
+pandas>=2.1
+requests>=2.31
+PyYAML>=6.0
+folium>=0.15
+
+# Weboberflaeche
+streamlit>=1.36
+
+# Optional: Sentinel-2-Sichtkontrolle (main.py --sentinel)
+pystac-client>=0.8
+Pillow>=10.0
+
+# Optional: lokale Verarbeitung regionaler OSM-PBF-Dateien statt Overpass
+# (nur noetig bei osm.backend: pbf)
+# pyrosm>=0.6.2

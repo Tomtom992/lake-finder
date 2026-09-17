@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+data/cache/
+data/pbf/
+# data/processed/ NICHT ignorieren: die vorberechneten Buendel muessen mit
+# ins Repository, sonst hat die Cloud-App im precomputed-Modus keine Daten.
+!data/processed/
+
+output/*.html
+output/*.csv
+output/*.geojson
+output/*.log
+output/chips/
+.DS_Store

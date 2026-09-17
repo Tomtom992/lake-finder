@@ -1,0 +1,15 @@
+[theme]
+base = "dark"
+primaryColor = "#4ade80"
+backgroundColor = "#0e1512"
+secondaryBackgroundColor = "#16211c"
+textColor = "#e8f0ea"
+
+[server]
+# Damit die App im lokalen Netz vom Handy erreichbar ist:
+#   streamlit run app.py --server.address 0.0.0.0
+headless = true
+maxUploadSize = 50
+
+[browser]
+gatherUsageStats = false

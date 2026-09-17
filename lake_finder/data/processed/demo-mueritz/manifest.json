@@ -1,0 +1,29 @@
+{
+  "format_version": 1,
+  "lake_finder_version": "2.0.0-rc1.1",
+  "created_utc": "2026-09-17T16:31:43+00:00",
+  "slug": "demo-mueritz",
+  "label": "DEMO – synthetische Daten (Müritz-Region)",
+  "region_bbox": [
+    13.05,
+    53.2,
+    13.55,
+    53.47
+  ],
+  "metric_crs": "EPSG:32633",
+  "is_demo": true,
+  "counts": {
+    "lakes": 14,
+    "passes": 5,
+    "spots": 0
+  },
+  "sources": {
+    "buildings": [
+      "demo"
+    ],
+    "landcover": "DEMO – keine echten Daten"
+  },
+  "files": {
+    "app_data": "app_data.json"
+  }
+}

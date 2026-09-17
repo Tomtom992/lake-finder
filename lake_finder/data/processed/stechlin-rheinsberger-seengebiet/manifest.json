@@ -1,0 +1,33 @@
+{
+  "format_version": 1,
+  "lake_finder_version": "2.0.0-rc1.1",
+  "created_utc": "2026-09-17T17:31:25+00:00",
+  "slug": "stechlin-rheinsberger-seengebiet",
+  "label": "Stechlin / Rheinsberger Seengebiet",
+  "region_bbox": [
+    12.805318156194476,
+    53.015253323751345,
+    13.254681843805523,
+    53.28474667624865
+  ],
+  "metric_crs": "EPSG:32633",
+  "is_demo": false,
+  "counts": {
+    "lakes": 232,
+    "passes": 0,
+    "spots": 0
+  },
+  "sources": {
+    "buildings": [
+      "osm"
+    ],
+    "buildings_failed": [],
+    "landcover": "ESA WorldCover 2021 v200"
+  },
+  "files": {
+    "app_data": "app_data.json",
+    "csv": "results.csv",
+    "geojson": "results.geojson",
+    "buffers": "buffers.geojson"
+  }
+}
