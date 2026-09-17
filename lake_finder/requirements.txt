@@ -1,25 +1,17 @@
-# lake_finder -- getestet mit Python 3.11 und 3.12
+# Minimalsatz fuer den precomputed-Modus (Cloud-Deployment).
 #
-# Alle Pakete liefern manylinux-/macOS-/Windows-Wheels mit gebuendeltem
-# GEOS, PROJ und GDAL. Es ist KEINE systemweite GDAL-Installation noetig.
+# Im Modus 'precomputed' liest die App nur vorberechnete Buendel und rechnet
+# Scores und Filter neu. Dafuer braucht sie weder geopandas noch shapely,
+# rasterio, pyproj oder GDAL -- nur json, pandas und numpy.
+#
+# Das ist kein Sparprogramm, sondern Robustheit: der Geo-Stack ist der mit
+# Abstand fehleranfaelligste Teil einer Cloud-Installation (Binaerpakete,
+# GDAL-Versionen, Buildzeiten). Was nicht installiert wird, kann nicht
+# kaputtgehen, und der Kaltstart dauert Sekunden statt Minuten.
+#
+# Fuer die Live-Analyse (Region neu rechnen) ist requirements.txt noetig.
 
-geopandas>=1.0,<2.0
-shapely>=2.0,<3.0          # STRtree.nearest/query mit predicate braucht 2.x
-pyproj>=3.6
-rasterio>=1.3,<2.0
-numpy>=1.26
-pandas>=2.1
-requests>=2.31
-PyYAML>=6.0
-folium>=0.15
-
-# Weboberflaeche
 streamlit>=1.36
-
-# Optional: Sentinel-2-Sichtkontrolle (main.py --sentinel)
-pystac-client>=0.8
-Pillow>=10.0
-
-# Optional: lokale Verarbeitung regionaler OSM-PBF-Dateien statt Overpass
-# (nur noetig bei osm.backend: pbf)
-# pyrosm>=0.6.2
+pandas>=2.1
+numpy>=1.26
+PyYAML>=6.0
